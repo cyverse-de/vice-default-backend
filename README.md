@@ -1,4 +1,4 @@
-de-default-backend
+vice-default-backend
 ==================
 
 Provides a default backend handler for the Kubernetes Ingress that handles
