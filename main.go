@@ -156,7 +156,15 @@ func (a *App) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if exists {
-		http.Redirect(w, r, a.loadingPageURL, http.StatusTemporaryRedirect)
+		loadingURL, err := url.Parse(a.loadingPageURL)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		q := loadingURL.Query()
+		q.Set("url", frontendURI)
+		loadingURL.RawQuery = q.Encode()
+		http.Redirect(w, r, loadingURL.String(), http.StatusTemporaryRedirect)
 		return
 	}
 
