@@ -54,20 +54,35 @@ type App struct {
 // operations. If the --disable-custom-header-match flag is true, then the Host
 // header in the request is returned. If it's false, the custom X-Frontend-Url
 // header is returned.
-func (a *App) FrontendAddress(r *http.Request) string {
+func (a *App) FrontendAddress(r *http.Request) (string, error) {
+	var (
+		scheme string
+		u      *url.URL
+		err    error
+	)
+
+	if r.TLS != nil {
+		scheme = "https"
+	} else {
+		scheme = "http"
+	}
+
 	if a.disableCustomHeaderMatch {
-		u := &url.URL{}
-		if r.TLS != nil {
-			u.Scheme = "https"
-		} else {
-			u.Scheme = "http"
-		}
+		u = &url.URL{}
+		u.Scheme = scheme
 		u.Host = r.Host
 		u.Path = r.URL.Path
 		u.RawQuery = r.URL.RawQuery
-		return u.String()
+	} else {
+		u, err = url.Parse(r.Header.Get("X-Frontend-Url"))
+		if err != nil {
+			return "", err
+		}
+		if u.Scheme == "" {
+			u.Scheme = scheme
+		}
 	}
-	return r.Header.Get("X-Frontend-Url")
+	return u.String(), nil
 }
 
 // AddressMatches returns true if the given URL is a subdomain of the configured
@@ -118,7 +133,11 @@ func (a *App) lookupSubdomain(subdomain string) (bool, error) {
 // RouteRequest determines whether to redirect a request to the 404 handler,
 // the landing page, or the loading page.
 func (a *App) RouteRequest(w http.ResponseWriter, r *http.Request) {
-	frontendURI := a.FrontendAddress(r)
+	frontendURI, err := a.FrontendAddress(r)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error parsing frontend URI %s", err.Error()), http.StatusBadRequest)
+		return
+	}
 
 	frontendURL, err := url.Parse(frontendURI)
 	if err != nil {
