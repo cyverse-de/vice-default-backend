@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"regexp"
-	"strings"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
@@ -25,75 +23,28 @@ func init() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 }
 
-// extractSubdomain returns the subdomain part of the URL.
-func extractSubdomain(addr string) (string, error) {
-	fields := strings.Split(addr, ".")
-	if len(fields) < 2 {
-		return "", nil
-	}
-	if len(fields) == 2 {
-		if fields[0] == "www" {
-			return "", nil
-		}
-		return fields[0], nil
-	}
-	return strings.Join(fields[:len(fields)-2], "."), nil
-}
-
 // App contains the http handlers for the application.
 type App struct {
 	graphqlBase              string
-	viceDomain               string
+	viceBaseURL              string
 	landingPageURL           string
 	loadingPageURL           string
 	notFoundPath             string
 	disableCustomHeaderMatch bool
 }
 
-// FrontendAddress returns the appropriate host[:port] to use for various
-// operations. If the --disable-custom-header-match flag is true, then the Host
-// header in the request is returned. If it's false, the custom X-Frontend-Url
-// header is returned.
-func (a *App) FrontendAddress(r *http.Request) (string, error) {
-	var (
-		scheme string
-		u      *url.URL
-		err    error
-	)
-
-	if r.TLS != nil {
-		scheme = "https"
-	} else {
-		scheme = "http"
-	}
-
-	if a.disableCustomHeaderMatch {
-		u = &url.URL{}
-		u.Scheme = scheme
-		u.Host = r.Host
-		u.Path = r.URL.Path
-		u.RawQuery = r.URL.RawQuery
-	} else {
-		u, err = url.Parse(r.Header.Get("X-Frontend-Url"))
-		if err != nil {
-			return "", err
-		}
-		if u.Scheme == "" {
-			u.Scheme = scheme
-		}
-	}
-	return u.String(), nil
-}
-
-// AddressMatches returns true if the given URL is a subdomain of the configured
-// VICE domain.
-func (a *App) AddressMatches(addr string) (bool, error) {
-	r := fmt.Sprintf("(a.*\\.)?\\Q%s\\E(:[0-9]+)?", a.viceDomain)
-	matched, err := regexp.MatchString(r, addr)
+// AppURL returns the fully-formed app URL based on the request passed in. Uses
+// the Host header and the configured VICE base URL to construct the app URL.
+func (a *App) AppURL(r *http.Request) (string, error) {
+	fmt.Printf("%+v\n", r)
+	parsed, err := url.Parse(a.viceBaseURL)
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	return matched, nil
+	parsed.Host = fmt.Sprintf("%s.%s", r.Host, parsed.Host)
+	parsed.RawPath = r.URL.RawPath
+	parsed.RawQuery = r.URL.RawQuery
+	return parsed.String(), nil
 }
 
 const subdomainLookupQuery = `
@@ -133,39 +84,9 @@ func (a *App) lookupSubdomain(subdomain string) (bool, error) {
 // RouteRequest determines whether to redirect a request to the 404 handler,
 // the landing page, or the loading page.
 func (a *App) RouteRequest(w http.ResponseWriter, r *http.Request) {
-	frontendURI, err := a.FrontendAddress(r)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("error parsing frontend URI %s", err.Error()), http.StatusBadRequest)
-		return
-	}
+	var err error
 
-	frontendURL, err := url.Parse(frontendURI)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("error checking URL %s: %s", frontendURI, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	frontendHost := frontendURL.Host
-
-	matches, err := a.AddressMatches(frontendHost)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("error checking URL %s: %s", frontendHost, err.Error()), http.StatusInternalServerError)
-		return
-	}
-	if !matches {
-		http.Error(w, fmt.Sprintf("URL %s is not in the domain of %s", frontendHost, a.viceDomain), http.StatusBadRequest)
-		return
-	}
-
-	subdomain, err := extractSubdomain(frontendHost)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("error getting subdomain for URL %s", frontendHost), http.StatusInternalServerError)
-		return
-	}
-	if subdomain == "" {
-		http.Redirect(w, r, a.landingPageURL, http.StatusTemporaryRedirect)
-		return
-	}
+	subdomain := r.Host
 
 	var exists bool
 	exists, err = a.lookupSubdomain(subdomain)
@@ -181,7 +102,12 @@ func (a *App) RouteRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		q := loadingURL.Query()
-		q.Set("url", frontendURI)
+		appURL, err := a.AppURL(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		q.Set("url", appURL)
 		loadingURL.RawQuery = q.Encode()
 		http.Redirect(w, r, loadingURL.String(), http.StatusTemporaryRedirect)
 		return
@@ -197,7 +123,7 @@ func main() {
 		sslCert                  = flag.String("ssl-cert", "", "The path to the SSL .crt file.")
 		sslKey                   = flag.String("ssl-key", "", "The path to the SSL .key file.")
 		graphqlBase              = flag.String("graphql", "http://graphql-de/v1alpha1/graphql", "The base URL for the graphql provider.")
-		viceDomain               = flag.String("vice-domain", "cyverse.run", "The domain and port for VICE apps.")
+		viceBaseURL              = flag.String("vice-base-url", "https://cyverse.run", "The base URL for VICE apps.")
 		landingPageURL           = flag.String("landing-page-url", "https://cyverse.run", "The URL for the landing page service.")
 		loadingPageURL           = flag.String("loading-page-url", "https://loading.cyverse.run", "The URL for the loading page service.")
 		staticFilePath           = flag.String("static-file-path", "./static", "Path to static file assets.")
@@ -219,7 +145,7 @@ func main() {
 	}
 
 	log.Infof("listen address is %s", *listenAddr)
-	log.Infof("VICE domain is %s", *viceDomain)
+	log.Infof("VICE base is %s", *viceBaseURL)
 	log.Infof("graphql URL is %s", *graphqlBase)
 	log.Infof("loading-page-url: %s", *loadingPageURL)
 	log.Infof("landing-page-url: %s", *landingPageURL)
@@ -230,7 +156,7 @@ func main() {
 		disableCustomHeaderMatch: *disableCustomHeaderMatch,
 		landingPageURL:           *landingPageURL,
 		loadingPageURL:           *loadingPageURL,
-		viceDomain:               *viceDomain,
+		viceBaseURL:              *viceBaseURL,
 		notFoundPath:             filepath.Join(*staticFilePath, "404.html"),
 	}
 
