@@ -11,6 +11,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/cyverse-de/configurate"
 	"github.com/gorilla/mux"
+	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 )
