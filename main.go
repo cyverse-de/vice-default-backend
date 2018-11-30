@@ -1,7 +1,7 @@
 package main
 
 import (
-	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"net/http"
@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/cyverse-de/configurate"
 	"github.com/gorilla/mux"
-	"github.com/machinebox/graphql"
+	"github.com/pkg/errors"
+	"github.com/spf13/viper"
 )
 
 var log = logrus.WithFields(logrus.Fields{
@@ -25,7 +27,7 @@ func init() {
 
 // App contains the http handlers for the application.
 type App struct {
-	graphqlBase              string
+	db                       *sql.DB
 	viceBaseURL              string
 	landingPageURL           string
 	loadingPageURL           string
@@ -47,38 +49,19 @@ func (a *App) AppURL(r *http.Request) (string, error) {
 	return parsed.String(), nil
 }
 
-const subdomainLookupQuery = `
-query Subdomain($subdomain: String) {
-  jobs(where: {subdomain: {_eq: $subdomain}}) {
-    id
-  }
-}
-`
+const subdomainLookupQuery = `select id from jobs where subdomain = $1 limit 1`
 
 func (a *App) lookupSubdomain(subdomain string) (bool, error) {
 	var (
 		err error
-		ok  bool
+		id  string
 	)
 
-	client := graphql.NewClient(a.graphqlBase)
-	req := graphql.NewRequest(subdomainLookupQuery)
-	req.Var("subdomain", subdomain)
-
-	data := map[string][]map[string]string{}
-	if err = client.Run(context.Background(), req, &data); err != nil {
-		return false, err
+	if err = a.db.QueryRow(subdomainLookupQuery, subdomain).Scan(&id); err != nil {
+		return false, errors.Wrapf(err, "error looking up job id for subdomain %s", subdomain)
 	}
 
-	if _, ok = data["jobs"]; !ok {
-		return false, fmt.Errorf("missing jobs from graphql query for '%s' subdomain", subdomain)
-	}
-
-	if len(data["jobs"]) < 1 {
-		return false, nil
-	}
-
-	return true, nil
+	return id != "", err
 }
 
 // RouteRequest determines whether to redirect a request to the 404 handler,
@@ -116,13 +99,18 @@ func (a *App) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, a.notFoundPath, http.StatusTemporaryRedirect)
 }
 
+const defaultConfig = `db:
+  uri: "db:5432"
+`
+
 func main() {
 	var (
+		cfg                      *viper.Viper
 		err                      error
 		listenAddr               = flag.String("listen", "0.0.0.0:60000", "The listen address.")
 		sslCert                  = flag.String("ssl-cert", "", "The path to the SSL .crt file.")
 		sslKey                   = flag.String("ssl-key", "", "The path to the SSL .key file.")
-		graphqlBase              = flag.String("graphql", "http://graphql-de/v1alpha1/graphql", "The base URL for the graphql provider.")
+		configPath               = flag.String("config", "/etc/iplant/de/jobservices.yml", "The path to the config file.")
 		viceBaseURL              = flag.String("vice-base-url", "https://cyverse.run", "The base URL for VICE apps.")
 		landingPageURL           = flag.String("landing-page-url", "https://cyverse.run", "The URL for the landing page service.")
 		loadingPageURL           = flag.String("loading-page-url", "https://loading.cyverse.run", "The URL for the loading page service.")
@@ -131,6 +119,24 @@ func main() {
 	)
 
 	flag.Parse()
+
+	if cfg, err = configurate.InitDefaults(*configPath, defaultConfig); err != nil {
+		log.Fatal(err)
+	}
+
+	dbURI := cfg.GetString("db.uri")
+	if dbURI == "" {
+		log.Fatal("db.uri must be set in the config file")
+	}
+
+	db, err := sql.Open("postgres", dbURI)
+	if err != nil {
+		log.Fatal(errors.Wrapf(err, "error connecting to database %s", dbURI))
+	}
+
+	if err = db.Ping(); err != nil {
+		log.Fatal(errors.Wrapf(err, "error pinging database %s", dbURI))
+	}
 
 	useSSL := false
 	if *sslCert != "" || *sslKey != "" {
@@ -146,13 +152,12 @@ func main() {
 
 	log.Infof("listen address is %s", *listenAddr)
 	log.Infof("VICE base is %s", *viceBaseURL)
-	log.Infof("graphql URL is %s", *graphqlBase)
 	log.Infof("loading-page-url: %s", *loadingPageURL)
 	log.Infof("landing-page-url: %s", *landingPageURL)
 	log.Infof("disable-custom-header-match is %+v", *disableCustomHeaderMatch)
 
 	app := App{
-		graphqlBase:              *graphqlBase,
+		db: db,
 		disableCustomHeaderMatch: *disableCustomHeaderMatch,
 		landingPageURL:           *landingPageURL,
 		loadingPageURL:           *loadingPageURL,
