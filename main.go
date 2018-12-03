@@ -9,11 +9,9 @@ import (
 	"path/filepath"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/cyverse-de/configurate"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
-	"github.com/spf13/viper"
 )
 
 var log = logrus.WithFields(logrus.Fields{
@@ -106,12 +104,11 @@ const defaultConfig = `db:
 
 func main() {
 	var (
-		cfg                      *viper.Viper
 		err                      error
 		listenAddr               = flag.String("listen", "0.0.0.0:60000", "The listen address.")
 		sslCert                  = flag.String("ssl-cert", "", "The path to the SSL .crt file.")
 		sslKey                   = flag.String("ssl-key", "", "The path to the SSL .key file.")
-		configPath               = flag.String("config", "/etc/iplant/de/jobservices.yml", "The path to the config file.")
+		dbURI                    = flag.String("db-uri", "", "The path to the config file.")
 		viceBaseURL              = flag.String("vice-base-url", "https://cyverse.run", "The base URL for VICE apps.")
 		landingPageURL           = flag.String("landing-page-url", "https://cyverse.run", "The URL for the landing page service.")
 		loadingPageURL           = flag.String("loading-page-url", "https://loading.cyverse.run", "The URL for the loading page service.")
@@ -121,22 +118,17 @@ func main() {
 
 	flag.Parse()
 
-	if cfg, err = configurate.InitDefaults(*configPath, defaultConfig); err != nil {
-		log.Fatal(err)
-	}
-
-	dbURI := cfg.GetString("db.uri")
-	if dbURI == "" {
+	if *dbURI == "" {
 		log.Fatal("db.uri must be set in the config file")
 	}
 
-	db, err := sql.Open("postgres", dbURI)
+	db, err := sql.Open("postgres", *dbURI)
 	if err != nil {
-		log.Fatal(errors.Wrapf(err, "error connecting to database %s", dbURI))
+		log.Fatal(errors.Wrapf(err, "error connecting to database %s", *dbURI))
 	}
 
 	if err = db.Ping(); err != nil {
-		log.Fatal(errors.Wrapf(err, "error pinging database %s", dbURI))
+		log.Fatal(errors.Wrapf(err, "error pinging database %s", *dbURI))
 	}
 
 	useSSL := false
