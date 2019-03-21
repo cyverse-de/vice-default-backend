@@ -66,36 +66,20 @@ func (a *App) lookupSubdomain(subdomain string) (bool, error) {
 // RouteRequest determines whether to redirect a request to the 404 handler,
 // the landing page, or the loading page.
 func (a *App) RouteRequest(w http.ResponseWriter, r *http.Request) {
-	var err error
-
-	subdomain := r.Host
-
-	var exists bool
-	exists, err = a.lookupSubdomain(subdomain)
+	loadingURL, err := url.Parse(a.loadingPageURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	if exists {
-		loadingURL, err := url.Parse(a.loadingPageURL)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		q := loadingURL.Query()
-		appURL, err := a.AppURL(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		q.Set("url", appURL)
-		loadingURL.RawQuery = q.Encode()
-		http.Redirect(w, r, loadingURL.String(), http.StatusTemporaryRedirect)
+	q := loadingURL.Query()
+	appURL, err := a.AppURL(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	http.Redirect(w, r, a.notFoundPath, http.StatusTemporaryRedirect)
+	q.Set("url", appURL)
+	loadingURL.RawQuery = q.Encode()
+	http.Redirect(w, r, loadingURL.String(), http.StatusTemporaryRedirect)
 }
 
 const defaultConfig = `db:
