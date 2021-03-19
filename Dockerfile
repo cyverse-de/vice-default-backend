@@ -1,21 +1,27 @@
-FROM golang:1.10.2
+FROM golang:1.16 as build-root
 
-COPY . /go/src/github.com/cyverse-de/vice-default-backend
+WORKDIR /build
 
-RUN go install github.com/cyverse-de/vice-default-backend
+COPY go.mod .
+COPY go.sum .
+
+RUN go mod download
+
+COPY . .
+
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GOARCH=amd64
+
+RUN go build ./...
+
+
+# Second stage
+FROM golang:1.16
+
+COPY --from=build-root /build/vice-default-backend /bin/vice-default-backend
 
 ENTRYPOINT ["vice-default-backend"]
 CMD ["--help"]
 
-WORKDIR /go/src/github.com/cyverse-de/vice-default-backend
-
-ARG git_commit=unknown
-ARG version="2.9.0"
-ARG descriptive_version=unknown
-
-LABEL org.cyverse.git-ref="$git_commit"
-LABEL org.cyverse.version="$version"
-LABEL org.cyverse.descriptive-version="$descriptive_version"
-LABEL org.label-schema.vcs-ref="$git_commit"
-LABEL org.label-schema.vcs-url="https://github.com/cyverse-de/vice-default-backend"
-LABEL org.label-schema.version="$descriptive_version"
+EXPOSE 60000

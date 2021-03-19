@@ -8,10 +8,10 @@ import (
 	"net/url"
 	"path/filepath"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var log = logrus.WithFields(logrus.Fields{
@@ -134,7 +134,7 @@ func main() {
 	log.Infof("disable-custom-header-match is %+v", *disableCustomHeaderMatch)
 
 	app := App{
-		db: db,
+		db:                       db,
 		disableCustomHeaderMatch: *disableCustomHeaderMatch,
 		landingPageURL:           *landingPageURL,
 		loadingPageURL:           *loadingPageURL,
