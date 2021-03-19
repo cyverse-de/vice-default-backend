@@ -92,9 +92,9 @@ func main() {
 	var (
 		err                      error
 		cfg                      *viper.Viper
-		dbURI                    *string
-		viceBaseURL              *string
-		loadingPageURL           *string
+		dbURI                    string
+		viceBaseURL              string
+		loadingPageURL           string
 		configPath               = flag.String("config", "/etc/iplant/de/jobservices.yml", "Path to the config file")
 		listenAddr               = flag.String("listen", "0.0.0.0:60000", "The listen address.")
 		sslCert                  = flag.String("ssl-cert", "", "The path to the SSL .crt file.")
@@ -149,31 +149,31 @@ func main() {
 	log.Infof("Done reading config from %s", *configPath)
 
 	// Make sure the db.uri URL is parseable
-	*dbURI = cfg.GetString("vice.db.uri")
-	if _, err = url.Parse(*dbURI); err != nil {
+	dbURI = cfg.GetString("vice.db.uri")
+	if _, err = url.Parse(dbURI); err != nil {
 		log.Fatal(errors.Wrap(err, "Can't parse db.uri in the config file"))
 	}
 
 	// Make sure the base URL is parseable
-	*viceBaseURL = cfg.GetString("vice.default_backend.base_url")
-	if _, err = url.Parse(*viceBaseURL); err != nil {
+	viceBaseURL = cfg.GetString("vice.default_backend.base_url")
+	if _, err = url.Parse(viceBaseURL); err != nil {
 		log.Fatal(errors.Wrap(err, "Cannot parse vice.default_backend.base_url from the configuration file"))
 	}
 
 	// Make sure the loading page URL is parseable
-	*loadingPageURL = cfg.GetString("vice.default_backend.loading_page_url")
-	if _, err = url.Parse(*loadingPageURL); err != nil {
+	loadingPageURL = cfg.GetString("vice.default_backend.loading_page_url")
+	if _, err = url.Parse(loadingPageURL); err != nil {
 		log.Fatal(errors.Wrap(err, "Cannot parse vice.default_backend.loading_page_url"))
 	}
 
 	// Test database connection
-	db, err := sql.Open("postgres", *dbURI)
+	db, err := sql.Open("postgres", dbURI)
 	if err != nil {
-		log.Fatal(errors.Wrapf(err, "error connecting to database %s", *dbURI))
+		log.Fatal(errors.Wrapf(err, "error connecting to database %s", dbURI))
 	}
 
 	if err = db.Ping(); err != nil {
-		log.Fatal(errors.Wrapf(err, "error pinging database %s", *dbURI))
+		log.Fatal(errors.Wrapf(err, "error pinging database %s", dbURI))
 	}
 
 	useSSL := false
@@ -189,8 +189,8 @@ func main() {
 	}
 
 	log.Infof("listen address is %s", *listenAddr)
-	log.Infof("VICE base is %s", *viceBaseURL)
-	log.Infof("loading-page-url: %s", *loadingPageURL)
+	log.Infof("VICE base is %s", viceBaseURL)
+	log.Infof("loading-page-url: %s", loadingPageURL)
 	log.Infof("landing-page-url: %s", *landingPageURL)
 	log.Infof("disable-custom-header-match is %+v", *disableCustomHeaderMatch)
 
@@ -198,8 +198,8 @@ func main() {
 		db:                       db,
 		disableCustomHeaderMatch: *disableCustomHeaderMatch,
 		landingPageURL:           *landingPageURL,
-		loadingPageURL:           *loadingPageURL,
-		viceBaseURL:              *viceBaseURL,
+		loadingPageURL:           loadingPageURL,
+		viceBaseURL:              viceBaseURL,
 		notFoundPath:             filepath.Join(*staticFilePath, "404.html"),
 	}
 
