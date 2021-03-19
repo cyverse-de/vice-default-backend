@@ -6,19 +6,19 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 
+	"github.com/cyverse-de/app-exposer/common"
+	"github.com/cyverse-de/configurate"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
-var log = logrus.WithFields(logrus.Fields{
-	"service": "cas-proxy",
-	"art-id":  "cas-proxy",
-	"group":   "org.cyverse",
-})
+var log = common.Log
 
 func init() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
@@ -87,25 +87,86 @@ const defaultConfig = `db:
 `
 
 func main() {
+	log.Logger.SetReportCaller(true)
+
 	var (
 		err                      error
+		cfg                      *viper.Viper
+		dbURI                    *string
+		viceBaseURL              *string
+		loadingPageURL           *string
+		configPath               = flag.String("config", "/etc/iplant/de/jobservices.yml", "Path to the config file")
 		listenAddr               = flag.String("listen", "0.0.0.0:60000", "The listen address.")
 		sslCert                  = flag.String("ssl-cert", "", "The path to the SSL .crt file.")
 		sslKey                   = flag.String("ssl-key", "", "The path to the SSL .key file.")
-		dbURI                    = flag.String("db-uri", "", "The path to the config file.")
-		viceBaseURL              = flag.String("vice-base-url", "https://cyverse.run", "The base URL for VICE apps.")
 		landingPageURL           = flag.String("landing-page-url", "https://cyverse.run", "The URL for the landing page service.")
-		loadingPageURL           = flag.String("loading-page-url", "https://loading.cyverse.run", "The URL for the loading page service.")
 		staticFilePath           = flag.String("static-file-path", "./static", "Path to static file assets.")
 		disableCustomHeaderMatch = flag.Bool("disable-custom-header-match", false, "Disables usage of the X-Frontend-Url header for subdomain matching. Use Host header instead. Useful during development.")
+		logLevel                 = flag.String("log-level", "warn", "One of trace, debug, info, warn, error, fatal, or panic.")
 	)
 
 	flag.Parse()
 
-	if *dbURI == "" {
-		log.Fatal("db.uri must be set in the config file")
+	var levelSetting logrus.Level
+
+	switch *logLevel {
+	case "trace":
+		levelSetting = logrus.TraceLevel
+		break
+	case "debug":
+		levelSetting = logrus.DebugLevel
+		break
+	case "info":
+		levelSetting = logrus.InfoLevel
+		break
+	case "warn":
+		levelSetting = logrus.WarnLevel
+		break
+	case "error":
+		levelSetting = logrus.ErrorLevel
+		break
+	case "fatal":
+		levelSetting = logrus.FatalLevel
+		break
+	case "panic":
+		levelSetting = logrus.PanicLevel
+		break
+	default:
+		log.Fatal("incorrect log level")
 	}
 
+	log.Logger.SetLevel(levelSetting)
+
+	log.Infof("Reading config from %s", *configPath)
+	if _, err = os.Open(*configPath); err != nil {
+		log.Fatal(*configPath)
+	}
+
+	cfg, err = configurate.Init(*configPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("Done reading config from %s", *configPath)
+
+	// Make sure the db.uri URL is parseable
+	*dbURI = cfg.GetString("vice.db.uri")
+	if _, err = url.Parse(*dbURI); err != nil {
+		log.Fatal(errors.Wrap(err, "Can't parse db.uri in the config file"))
+	}
+
+	// Make sure the base URL is parseable
+	*viceBaseURL = cfg.GetString("vice.default_backend.base_url")
+	if _, err = url.Parse(*viceBaseURL); err != nil {
+		log.Fatal(errors.Wrap(err, "Cannot parse vice.default_backend.base_url from the configuration file"))
+	}
+
+	// Make sure the loading page URL is parseable
+	*loadingPageURL = cfg.GetString("vice.default_backend.loading_page_url")
+	if _, err = url.Parse(*loadingPageURL); err != nil {
+		log.Fatal(errors.Wrap(err, "Cannot parse vice.default_backend.loading_page_url"))
+	}
+
+	// Test database connection
 	db, err := sql.Open("postgres", *dbURI)
 	if err != nil {
 		log.Fatal(errors.Wrapf(err, "error connecting to database %s", *dbURI))
