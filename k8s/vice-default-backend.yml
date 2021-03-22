@@ -13,7 +13,6 @@ spec:
         de-app: vice-default-backend
         app: de
     spec:
-      serviceAccountName: vice-default-backend
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -51,6 +50,9 @@ spec:
           limits:
             cpu: "100m"
             memory: "256Mi"
+        args:
+          - --config
+          - /etc/iplant/de/jobservice.yml
         ports:
           - name: listen-port
             containerPort: 60000
