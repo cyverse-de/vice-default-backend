@@ -52,7 +52,7 @@ spec:
             memory: "256Mi"
         args:
           - --config
-          - /etc/iplant/de/jobservice.yml
+          - /etc/iplant/de/jobservices.yml
         ports:
           - name: listen-port
             containerPort: 60000
