@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cyverse-de/app-exposer/common"
 	"github.com/cyverse-de/configurate"
@@ -29,7 +31,7 @@ type App struct {
 	db                       *sql.DB
 	viceBaseURL              string
 	landingPageURL           string
-	loadingPageURL           string
+	loadingPageURLTemplate   *template.Template
 	notFoundPath             string
 	disableCustomHeaderMatch bool
 }
@@ -63,23 +65,31 @@ func (a *App) lookupSubdomain(subdomain string) (bool, error) {
 	return id != "", err
 }
 
+// TemplateURL is used for interpolating the URL into the template passed
+// in for the loading page URL.
+type TemplateURL struct {
+	URL string
+}
+
 // RouteRequest determines whether to redirect a request to the 404 handler,
 // the landing page, or the loading page.
 func (a *App) RouteRequest(w http.ResponseWriter, r *http.Request) {
-	loadingURL, err := url.Parse(a.loadingPageURL)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	q := loadingURL.Query()
 	appURL, err := a.AppURL(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	q.Set("url", appURL)
-	loadingURL.RawQuery = q.Encode()
-	http.Redirect(w, r, loadingURL.String(), http.StatusTemporaryRedirect)
+
+	var b strings.Builder
+	t := TemplateURL{template.URLQueryEscaper(appURL)}
+
+	err = a.loadingPageURLTemplate.Execute(&b, t)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, b.String(), http.StatusTemporaryRedirect)
 }
 
 const defaultConfig = `db:
@@ -95,6 +105,7 @@ func main() {
 		dbURI                    string
 		viceBaseURL              string
 		loadingPageURL           string
+		loadingPageURLTemplate   *template.Template
 		configPath               = flag.String("config", "/etc/iplant/de/jobservices.yml", "Path to the config file")
 		listenAddr               = flag.String("listen", "0.0.0.0:60000", "The listen address.")
 		sslCert                  = flag.String("ssl-cert", "", "The path to the SSL .crt file.")
@@ -162,7 +173,7 @@ func main() {
 
 	// Make sure the loading page URL is parseable
 	loadingPageURL = cfg.GetString("vice.default_backend.loading_page_url")
-	if _, err = url.Parse(loadingPageURL); err != nil {
+	if loadingPageURLTemplate, err = template.New("loadingPageURL").Parse(loadingPageURL); err != nil {
 		log.Fatal(errors.Wrap(err, "Cannot parse vice.default_backend.loading_page_url"))
 	}
 
@@ -198,7 +209,7 @@ func main() {
 		db:                       db,
 		disableCustomHeaderMatch: *disableCustomHeaderMatch,
 		landingPageURL:           *landingPageURL,
-		loadingPageURL:           loadingPageURL,
+		loadingPageURLTemplate:   loadingPageURLTemplate,
 		viceBaseURL:              viceBaseURL,
 		notFoundPath:             filepath.Join(*staticFilePath, "404.html"),
 	}
