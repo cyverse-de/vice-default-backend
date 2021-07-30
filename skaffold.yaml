@@ -10,5 +10,5 @@ build:
   tagPolicy:
     gitCommit: {}
   artifacts:
-  - image: discoenv/vice-default-backend
+  - image: harbor.cyverse.org/de/vice-default-backend
   local: {}

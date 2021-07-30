@@ -42,7 +42,7 @@ spec:
                 path: jobservices.yml
       containers:
       - name: vice-default-backend
-        image: discoenv/vice-default-backend
+        image: harbor.cyverse.org/de/vice-default-backend
         resources:
           requests:
             cpu: "1m"
