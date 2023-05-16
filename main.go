@@ -30,7 +30,6 @@ func init() {
 type App struct {
 	db                       *sql.DB
 	viceBaseURL              string
-	landingPageURL           string
 	loadingPageURLTemplate   *template.Template
 	notFoundPath             string
 	disableCustomHeaderMatch bool
@@ -110,7 +109,6 @@ func main() {
 		listenAddr               = flag.String("listen", "0.0.0.0:60000", "The listen address.")
 		sslCert                  = flag.String("ssl-cert", "", "The path to the SSL .crt file.")
 		sslKey                   = flag.String("ssl-key", "", "The path to the SSL .key file.")
-		landingPageURL           = flag.String("landing-page-url", "https://cyverse.run", "The URL for the landing page service.")
 		staticFilePath           = flag.String("static-file-path", "./static", "Path to static file assets.")
 		disableCustomHeaderMatch = flag.Bool("disable-custom-header-match", false, "Disables usage of the X-Frontend-Url header for subdomain matching. Use Host header instead. Useful during development.")
 		logLevel                 = flag.String("log-level", "warn", "One of trace, debug, info, warn, error, fatal, or panic.")
@@ -202,13 +200,11 @@ func main() {
 	log.Infof("listen address is %s", *listenAddr)
 	log.Infof("VICE base is %s", viceBaseURL)
 	log.Infof("loading-page-url: %s", loadingPageURL)
-	log.Infof("landing-page-url: %s", *landingPageURL)
 	log.Infof("disable-custom-header-match is %+v", *disableCustomHeaderMatch)
 
 	app := App{
 		db:                       db,
 		disableCustomHeaderMatch: *disableCustomHeaderMatch,
-		landingPageURL:           *landingPageURL,
 		loadingPageURLTemplate:   loadingPageURLTemplate,
 		viceBaseURL:              viceBaseURL,
 		notFoundPath:             filepath.Join(*staticFilePath, "404.html"),
