@@ -49,21 +49,6 @@ func (a *App) AppURL(r *http.Request) (string, error) {
 	return parsed.String(), nil
 }
 
-const subdomainLookupQuery = `select id from jobs where subdomain = $1 limit 1`
-
-func (a *App) lookupSubdomain(subdomain string) (bool, error) {
-	var (
-		err error
-		id  string
-	)
-
-	if err = a.db.QueryRow(subdomainLookupQuery, subdomain).Scan(&id); err != nil {
-		return false, errors.Wrapf(err, "error looking up job id for subdomain %s", subdomain)
-	}
-
-	return id != "", err
-}
-
 // TemplateURL is used for interpolating the URL into the template passed
 // in for the loading page URL.
 type TemplateURL struct {
@@ -91,10 +76,6 @@ func (a *App) RouteRequest(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, b.String(), http.StatusTemporaryRedirect)
 }
 
-const defaultConfig = `db:
-  uri: "db:5432"
-`
-
 func main() {
 	log.Logger.SetReportCaller(true)
 
@@ -121,25 +102,18 @@ func main() {
 	switch *logLevel {
 	case "trace":
 		levelSetting = logrus.TraceLevel
-		break
 	case "debug":
 		levelSetting = logrus.DebugLevel
-		break
 	case "info":
 		levelSetting = logrus.InfoLevel
-		break
 	case "warn":
 		levelSetting = logrus.WarnLevel
-		break
 	case "error":
 		levelSetting = logrus.ErrorLevel
-		break
 	case "fatal":
 		levelSetting = logrus.FatalLevel
-		break
 	case "panic":
 		levelSetting = logrus.PanicLevel
-		break
 	default:
 		log.Fatal("incorrect log level")
 	}
