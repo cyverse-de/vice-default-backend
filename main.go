@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/cyverse-de/app-exposer/common"
 	"github.com/cyverse-de/configurate"
@@ -30,7 +29,7 @@ func init() {
 type App struct {
 	db                       *sql.DB
 	viceBaseURL              string
-	loadingPageURLTemplate   *template.Template
+	loadingPageBaseURL       *url.URL
 	notFoundPath             string
 	disableCustomHeaderMatch bool
 }
@@ -64,16 +63,9 @@ func (a *App) RouteRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var b strings.Builder
-	t := TemplateURL{template.URLQueryEscaper(appURL)}
-
-	err = a.loadingPageURLTemplate.Execute(&b, t)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	http.Redirect(w, r, b.String(), http.StatusTemporaryRedirect)
+	log.Infof("app url: %s", appURL)
+	loadingURL := a.loadingPageBaseURL.JoinPath(template.URLQueryEscaper(appURL))
+	http.Redirect(w, r, loadingURL.String(), http.StatusTemporaryRedirect)
 }
 
 func main() {
@@ -85,14 +77,14 @@ func main() {
 		dbURI                    string
 		viceBaseURL              string
 		loadingPageURL           string
-		loadingPageURLTemplate   *template.Template
+		loadingPageBaseURL       *url.URL
 		configPath               = flag.String("config", "/etc/iplant/de/jobservices.yml", "Path to the config file")
 		listenAddr               = flag.String("listen", "0.0.0.0:60000", "The listen address.")
 		sslCert                  = flag.String("ssl-cert", "", "The path to the SSL .crt file.")
 		sslKey                   = flag.String("ssl-key", "", "The path to the SSL .key file.")
 		staticFilePath           = flag.String("static-file-path", "./static", "Path to static file assets.")
 		disableCustomHeaderMatch = flag.Bool("disable-custom-header-match", false, "Disables usage of the X-Frontend-Url header for subdomain matching. Use Host header instead. Useful during development.")
-		logLevel                 = flag.String("log-level", "warn", "One of trace, debug, info, warn, error, fatal, or panic.")
+		logLevel                 = flag.String("log-level", "info", "One of trace, debug, info, warn, error, fatal, or panic.")
 	)
 
 	flag.Parse()
@@ -145,7 +137,7 @@ func main() {
 
 	// Make sure the loading page URL is parseable
 	loadingPageURL = cfg.GetString("vice.default_backend.loading_page_url")
-	if loadingPageURLTemplate, err = template.New("loadingPageURL").Parse(loadingPageURL); err != nil {
+	if loadingPageBaseURL, err = url.Parse(loadingPageURL); err != nil {
 		log.Fatal(errors.Wrap(err, "Cannot parse vice.default_backend.loading_page_url"))
 	}
 
@@ -179,7 +171,7 @@ func main() {
 	app := App{
 		db:                       db,
 		disableCustomHeaderMatch: *disableCustomHeaderMatch,
-		loadingPageURLTemplate:   loadingPageURLTemplate,
+		loadingPageBaseURL:       loadingPageBaseURL,
 		viceBaseURL:              viceBaseURL,
 		notFoundPath:             filepath.Join(*staticFilePath, "404.html"),
 	}
@@ -190,7 +182,7 @@ func main() {
 		http.ServeFile(w, r, app.notFoundPath)
 	})
 
-	r.PathPrefix("/healthz").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.PathPrefix("/healthz").HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(w, "I'm healthy.")
 	})
 
