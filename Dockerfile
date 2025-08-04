@@ -17,7 +17,7 @@ RUN go build ./...
 
 
 # Second stage
-FROM golang:1.16
+FROM debian:stable-slim
 
 COPY --from=build-root /build/vice-default-backend /bin/vice-default-backend
 
