@@ -1,4 +1,4 @@
-FROM dhi/golang:1.25 as build-root
+FROM golang:1.25 as builder
 
 WORKDIR /build
 
@@ -17,12 +17,12 @@ RUN go build -o vice-default-backend .
 
 
 # Second stage
-FROM dhi/debian-base:trixie
+FROM gcr.io/distroless/static-debian13:nonroot
 
 WORKDIR /vice-default-backend
-COPY --from=build-root /build/static ./static
+COPY --from=builder /build/static ./static
 
-COPY --from=build-root /build/vice-default-backend /bin/vice-default-backend
+COPY --from=builder /build/vice-default-backend /bin/vice-default-backend
 
 ENTRYPOINT ["vice-default-backend"]
 CMD ["--help"]
