@@ -1,4 +1,4 @@
-FROM golang:1.21 as build-root
+FROM dhi/golang:1.25 as build-root
 
 WORKDIR /build
 
@@ -13,11 +13,14 @@ ENV CGO_ENABLED=0
 ENV GOOS=linux
 ENV GOARCH=amd64
 
-RUN go build ./...
+RUN go build -o vice-default-backend .
 
 
 # Second stage
-FROM debian:stable-slim
+FROM dhi/debian-base:trixie
+
+WORKDIR /vice-default-backend
+COPY --from=build-root /build/static ./static
 
 COPY --from=build-root /build/vice-default-backend /bin/vice-default-backend
 

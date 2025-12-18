@@ -183,7 +183,7 @@ func main() {
 	})
 
 	r.PathPrefix("/healthz").HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprintf(w, "I'm healthy.")
+		_, _ = fmt.Fprintf(w, "I'm healthy.")
 	})
 
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(*staticFilePath))))
