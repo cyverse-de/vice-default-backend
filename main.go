@@ -25,11 +25,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cyverse-de/app-exposer/common"
 	"github.com/sirupsen/logrus"
 )
 
-var log = common.Log
+// log is the service-wide logger. It carries the same static fields the shared
+// app-exposer logger used to provide, identifying this service instead.
+var log = logrus.WithFields(logrus.Fields{
+	"service": "vice-default-backend",
+	"art-id":  "vice-default-backend",
+	"group":   "org.cyverse",
+})
 
 //go:embed templates/waiting.html
 var waitingTemplateFS embed.FS
